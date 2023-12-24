@@ -1,1 +1,29 @@
+import pymysql
 
+# 数据库连接配置
+config = {
+    'host': 'your_host',
+    'user': 'your_username',
+    'password': 'your_password',
+    'db': 'your_database'
+}
+
+# 创建数据库连接
+connection = pymysql.connect(**config)
+
+try:
+    with connection.cursor() as cursor:
+        # 获取所有表的名称
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (config['db'],))
+        tables = cursor.fetchall()
+
+        # 对于每个表，获取最后一条数据
+        for table in tables:
+            table_name = table[0]
+            query = f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 1"
+            cursor.execute(query)
+            last_record = cursor.fetchone()
+            print(f"Last record of table {table_name}: {last_record}")
+
+finally:
+    connection.close()
