@@ -29,3 +29,58 @@ try:
 
 finally:
     connection.close()
+
+
+
+import pymysql
+import pandas as pd
+
+# 数据库连接配置
+config = {
+    'host': 'your_host',
+    'user': 'your_username',
+    'password': 'your_password',
+    'db': 'your_database'
+}
+
+# 创建数据库连接
+connection = pymysql.connect(**config)
+
+# 准备一个空的DataFrame来存储数据
+all_data = pd.DataFrame()
+
+try:
+    with connection.cursor() as cursor:
+        # 获取所有表的名称
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (config['db'],))
+        tables = cursor.fetchall()
+
+        for table in tables:
+            table_name = table[0]
+
+            # 获取每个表的最后一条数据
+            cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 1")
+            last_record = cursor.fetchone()
+
+            # 获取列名
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s", (config['db'], table_name))
+            columns = cursor.fetchall()
+            column_names = [column[0] for column in columns]
+
+            # 将数据和列名转换为DataFrame
+            df = pd.DataFrame([last_record], columns=column_names)
+
+            # 添加一个表示表名的列
+            df['table_name'] = table_name
+
+            # 将此DataFrame追加到总的DataFrame中
+            all_data = all_data.append(df, ignore_index=True)
+
+finally:
+    connection.close()
+
+# 将数据写入Excel文件
+excel_file = 'database_data.xlsx'
+all_data.to_excel(excel_file, index=False)
+
+print(f"Data exported to {excel_file}")
