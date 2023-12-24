@@ -1,18 +1,1 @@
-import os
 
-# 设置您要递归搜索 YAML 文件的目录路径。
-directory_path = '/path/to/your/directory'
-
-# 列表，用于保存 YAML 文件的完整路径。
-yaml_files = []
-
-# 递归遍历目录，找到所有以 .yaml 或 .yml 扩展名结尾的文件。
-for root, dirs, files in os.walk(directory_path):
-    for filename in files:
-        if filename.endswith(".yaml") or filename.endswith(".yml"):
-            # 将找到的文件的完整路径添加到列表中
-            yaml_files.append(os.path.join(root, filename))
-
-# 打印在目录及其子目录中找到的所有 YAML 文件的完整路径。
-for file in yaml_files:
-    print(file)
