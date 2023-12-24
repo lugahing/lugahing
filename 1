@@ -1,1 +1,31 @@
+import pymysql
 
+# 数据库连接配置
+config = {
+    'host': 'your_host',
+    'user': 'your_username',
+    'password': 'your_password',
+    'db': 'your_database'
+}
+
+# 创建数据库连接
+connection = pymysql.connect(**config)
+
+try:
+    with connection.cursor() as cursor:
+        # 获取所有表的名称
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (config['db'],))
+        tables = cursor.fetchall()
+
+        for table in tables:
+            table_name = table[0]
+            print(f"\nTable: {table_name}")
+
+            # 获取表的字段名
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s", (config['db'], table_name))
+            columns = cursor.fetchall()
+            column_names = [column[0] for column in columns]
+            print("Columns:", ", ".join(column_names))
+
+finally:
+    connection.close()
