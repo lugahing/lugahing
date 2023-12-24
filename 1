@@ -84,3 +84,67 @@ excel_file = 'database_data.xlsx'
 all_data.to_excel(excel_file, index=False)
 
 print(f"Data exported to {excel_file}")
+
+
+import pymysql
+import openpyxl
+
+# 数据库连接配置
+config = {
+    'host': 'your_host',
+    'user': 'your_username',
+    'password': 'your_password',
+    'db': 'your_database'
+}
+
+# 创建数据库连接
+connection = pymysql.connect(**config)
+
+# 创建一个新的Excel工作簿
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "Database Data"
+
+try:
+    with connection.cursor() as cursor:
+        # 获取所有表的名称
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (config['db'],))
+        tables = cursor.fetchall()
+
+        # Excel文件的行号
+        row_num = 1
+
+        for table in tables:
+            table_name = table[0]
+
+            # 获取每个表的字段名
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s", (config['db'], table_name))
+            columns = [col[0] for col in cursor.fetchall()]
+
+            # 获取每个表的最后一条数据
+            cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+
+            # 如果表为空，则跳过
+            if row is None:
+                continue
+
+            # 写入表名和字段名
+            ws.cell(row=row_num, column=1, value=f"Table: {table_name}")
+            ws.cell(row=row_num, column=2, value="Columns:")
+            ws.append(columns)
+            row_num += 2
+
+            # 写入数据
+            for col_num, data in enumerate(row, start=1):
+                ws.cell(row=row_num, column=col_num, value=data)
+            row_num += 2  # 跳过一个空行到下一个表
+
+finally:
+    connection.close()
+
+# 保存Excel文件
+output_file = 'database_last_rows.xlsx'
+wb.save(output_file)
+
+print(f'Data exported to {output_file}')
