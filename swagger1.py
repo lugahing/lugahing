@@ -1,6 +1,6 @@
 import yaml
 import json
-
+2
 def generate_json_example_for_get(parameters):
     """
     根据GET请求的parameters生成JSON示例
