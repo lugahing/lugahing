@@ -67,8 +67,66 @@ try:
 finally:
     connection.close()
 
+
+
+
+
+
+
+
 # 保存Excel文件
 output_file = 'database_last_rows.xlsx'
-wb.save(output_file)
 
-print(f'Data exported to {output_file}')
+
+
+
+
+import pymysql
+
+# 数据库连接配置
+config = {
+    'host': 'your_host',
+    'user': 'your_username',
+    'password': 'your_password',
+    'db': 'your_database'
+}
+
+# 创建数据库连接
+connection = pymysql.connect(**config)
+
+# 用于存储每个表最后一行数据的字典
+tables_data = {}
+
+try:
+    with connection.cursor() as cursor:
+        # 获取所有表的名称
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (config['db'],))
+        tables = cursor.fetchall()
+
+        for table in tables:
+            table_name = table[0]
+
+            # 获取每个表的字段名
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s", (config['db'], table_name))
+            columns = [col[0] for col in cursor.fetchall()]
+
+            # 获取每个表的最后一条数据
+            cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+
+            # 如果表为空，则跳过
+            if row is None:
+                continue
+
+            # 生成字典并添加到结果中
+            row_data = dict(zip(columns, row))
+            tables_data[table_name] = row_data
+
+finally:
+    connection.close()
+
+# 打印生成的字典
+for table_name, data in tables_data.items():
+    print(f"Table: {table_name}")
+    print(data)
+
