@@ -1,0 +1,10 @@
+address:
+  city: 北京
+  state: 北京市
+  street: 中山路123号
+age: 28
+children:
+- 小红
+- 小明
+married: false
+name: 张三
