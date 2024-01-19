@@ -1,0 +1,73 @@
+import pymysql
+import yaml
+
+def read_yaml_file(file_path):
+    with open(file_path, 'r', encoding='utf8') as file:
+        return yaml.safe_load(file)
+
+def compare_dicts(dict1, dict2):
+    diff = {}
+    for key in dict1.keys() | dict2.keys():
+        if dict1.get(key) != dict2.get(key):
+            diff[key] = (dict1.get(key).__str__(), dict2.get(key).__str__())
+    return diff
+
+def connect_to_database(db_config):
+    try:
+        connection = pymysql.connect(
+            host=db_config['host'],
+            user=db_config['user'],
+            password=db_config['password'],
+            database=db_config['name'],
+            port=db_config['port']
+        )
+        print(f"成功连接到 MySQL 数据库 '{db_config['name']}'")
+        return connection
+    except pymysql.MySQLError as e:
+        print(f"连接错误：{e}")
+        return None
+
+def fetch_table_updates(connection, db_name):
+    result = {}
+    try:
+        with connection.cursor() as cursor:
+            query = "SELECT TABLE_NAME, UPDATE_TIME FROM information_schema.`TABLES` WHERE TABLE_SCHEMA=%s AND UPDATE_TIME is not NULL ORDER BY UPDATE_TIME DESC"
+            cursor.execute(query, (db_name,))
+            for table_name, update_time in cursor.fetchall():
+                result[table_name] = update_time
+    except pymysql.MySQLError as e:
+        print(f"查询错误：{e}")
+    return result
+
+def execute_read_and_write(db_name, yaml_file, config):
+    connection = connect_to_database(config[db_name])
+    if connection:
+        table_updates = fetch_table_updates(connection, db_name)
+        with open(yaml_file, 'w', encoding='utf8') as file:
+            yaml.dump(table_updates, file, allow_unicode=True)
+        connection.close()
+    else:
+        print(f"无法连接到数据库 {db_name}")
+
+def main():
+    # 读取数据库配置
+    with open('db_config.yaml', 'r', encoding='utf8') as file:
+        config = yaml.safe_load(file)
+
+    execute_read_and_write("phoenix_c2", '1.yaml', config)
+    input("请按任意键继续...")
+    execute_read_and_write("phoenix_exec_c2", '2.yaml', config)
+
+    # 读取 YAML 文件
+    yaml_dict1 = read_yaml_file('1.yaml')
+    yaml_dict2 = read_yaml_file('2.yaml')
+
+    # 比较字典
+    differences = compare_dicts(yaml_dict1, yaml_dict2)
+    if differences:
+        print("在两个 YAML 文件之间找到的差异:", differences)
+    else:
+        print("两个 YAML 文件内容相同。")
+
+if __name__ == '__main__':
+    main()
