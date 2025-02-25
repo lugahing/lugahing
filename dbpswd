@@ -1,0 +1,7 @@
+用例名称	用例编号	测试阶段	自动化类型	可自动化用例	等级	前提条件	测试步骤	预期结果	需求/缺陷关联关系(老旧)
+Testcase_Name	Testcase_Number	Testcase_Stage	Testcase_AutoType	Testcase_TobeAutomated	Testcase_Level	Testcase_PrepareCondition	Testcase_TestSteps	Testcase_ExpectedResult	testCaseRelationID
+【MSS】我的任务-抄送我的-进行中：查询条件	SR20241022189040_US20241022189041_001	Beta	false	false	level 1	1.系统正常；	"1.进入我的任务应用下的抄送我的页面
+2.基本查询字段：任务单号、任务分类、创建人、创建时间、计划完成时间、责任人
+3.任务单号、创建人和责任人均为文本输入框，任务单号输入后回车精确匹配搜索，创建人和责任人输入后回车选中查询出来的用户；创建时间和计划完成时间为时间选择框，且创建时间默认显示最近六个月
+4.时间选择框支持快捷选择今天、最近3天、最近1周、最近1月、最近3月；日期跟日历对应，支持切换月份和年份"	"1.进行中页面查询条件正常展示
+2.各个查询条件符合预定值且满足高保和需规要求"	2070110030;2070109948;DTS2024111303075
