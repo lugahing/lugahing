@@ -93,7 +93,12 @@ class INIHandler:
         """清理现有INI文件的格式（去除等号空格）"""
         self.load_ini()
         self.save_ini()
-
+        
+    class CustomConfigParser(configparser.ConfigParser):
+        def write(self, fp, space_around_delimiters=True):
+            if space_around_delimiters is None:
+                space_around_delimiters = False
+            return super().write(fp, space_around_delimiters)
 # ---------------------- 使用示例 ----------------------
 if __name__ == "__main__":
     try:
