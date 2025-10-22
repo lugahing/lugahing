@@ -1,0 +1,538 @@
+array中
+0:地形可通行
+1：地形不可通行
+3：障碍可攻击
+4：障碍不可攻击
+5：角色
+6：路径
+7：目的地
+8：路径中的障碍物
+9：障碍中离角色最近的
+10：折点
+
+anim()
+输入二维numpy数据，anim会以网格化的形式画出来，就是用来观测的，运行中不需要
+
+array_data = terrain.grid_read()
+array_data=[array, ground_width, ground_height]
+读取地图地形数据
+array：地形的网格化，0地形可通行、1地形不可通行
+ground_width, ground_height地图的宽高
+
+
+array_data = terrain.grid_obstacle(array_data, room.obstacle)  #障碍物
+array中添加障碍物，3可攻击障碍，4不可攻击障碍
+
+array_data = terrain.grid_obstacle(array_data, room.door) #door
+array中添加门为0.因为门都在地形不可通信中，所以把门的范围都设置为可通行
+
+
+grid_coord_role=terrain.real_to_grid(array_data,(room.role['x'], room.role['y']))
+array=terrain.grid_mark(array_data[0],grid_coord_role,5) #角色
+将角色坐标转为网格坐标，添加array中，值为5
+
+grid_coord_target = terrain.real_to_grid(array_data, (target_x, target_y))
+array = terrain.grid_mark(array, grid_coord_target, 7)  # 目的地
+将目的地坐标转为网格坐标，添加到array中，值为7
+
+array = terrain.grid_path(array)
+用A星算出路径，将array路径中障碍物为8，路径设为6，路径中的折点设为10
+
+array = terrain.grid_destroy(array)
+将array中离角色最近的障碍物设为9
+
+
+array, grid_coord, type_str = terrain.nearest_reachable_point(array)
+找到角色到目的地的直线可达点，并标记为2。
+直线可达点就是连线中均为0（可通行）
+先判断能不能直接到7（目的地），能就返回目的地
+不能直接到目的地，就将9（可摧毁障碍）、10（折点）按照离角色5由远到近排列，依次判断能否达到，也就是返回能直线到达而且离角色最远的那个点
+返回：
+	tuple: (更新后的数组, 可达点坐标 (x, y), 类型 str)
+		类型:
+			9 -> 'obstacle'
+			10 -> 'point'
+			7 -> 'target'
+
+if grid_coord is not None:、
+	有返回点就转为实际坐标返回
+	type_str主要是当返回的是obstacle障碍物的时候，就需要进行攻击
+	target_x, target_y=terrain.grid_to_real(array_data,grid_coord)
+	return target_x, target_y, type_str
+	
+
+没有就返回原目标点
+return target_x, target_y,None
+
+
+
+
+import numpy as np
+import cv2
+
+
+
+def grid_to_real(array_data, grid_coord):
+    """
+    网格坐标 -> 实际坐标
+    array_data: [original_arr, ground_width, ground_height]
+    grid_coord: (x, y) 网格坐标
+    返回: (real_x, real_y)
+    """
+    original_arr, ground_width, ground_height = array_data
+    H, W = original_arr.shape
+    x, y = grid_coord
+
+    # 每个网格在实际坐标中的大小
+    cell_w = ground_width / W
+    cell_h = ground_height / H
+
+    # 返回网格中心的实际坐标
+    real_x = (x + 0.5) * cell_w
+    real_y = (y + 0.5) * cell_h
+    real_coord = (int(real_x), int(real_y))
+    return real_coord
+
+
+def real_to_grid(array_data, real_coord):
+    """
+    实际坐标 -> 网格坐标
+    array_data: [original_arr, ground_width, ground_height]
+    real_coord: (x, y) 实际坐标
+    返回: (grid_x, grid_y) 整数网格坐标
+    """
+    original_arr, ground_width, ground_height = array_data
+    H, W = original_arr.shape
+    real_x, real_y = real_coord
+
+    # 每个网格在实际坐标中的大小
+    cell_w = ground_width / W
+    cell_h = ground_height / H
+
+    # 网格坐标取整
+    grid_x = int(real_x // cell_w)
+    grid_y = int(real_y // cell_h)
+
+    # 保证不超过边界
+    grid_x = min(max(grid_x, 0), W - 1)
+    grid_y = min(max(grid_y, 0), H - 1)
+    grid_coord = (grid_x, grid_y)
+    return grid_coord
+
+
+def grid_mark(array, grid_coord, mark):
+    """
+    将 array 中指定的网格坐标标记为 mark
+    array: 2D numpy array
+    grid_coord: (x, y) 网格坐标
+    mark: 要标记的值，默认 8
+    """
+    x, y = grid_coord
+    array[y, x] = mark
+    return array
+
+
+
+class GridAnimatorCV:
+    def __init__(self, cell_size=10):
+        self.cell_size = cell_size  # 每个格子的像素大小
+        self.colors = [
+            (0, 255, 0),  # green
+            (0, 0, 255),  # red
+            (255, 0, 0),  # blue
+            (0, 255, 255),  # yellow
+            (255, 255, 0),  # cyan
+            (255, 0, 255),  # magenta / purple
+            (255, 165, 0),  # orange
+            (128, 0, 128),  # dark purple
+            (0, 128, 128),  # teal
+            (128, 128, 0),  # olive
+            (0, 0, 128),  # navy
+            (128, 0, 0),  # maroon
+            (0, 128, 0),  # dark green
+            (192, 192, 192),  # silver
+            (128, 128, 128),  # gray
+            (0, 255, 127),  # spring green
+            (255, 20, 147),  # deep pink
+            (70, 130, 180),  # steel blue
+            (255, 215, 0),  # gold
+            (139, 69, 19),  # saddle brown
+        ]
+
+    def draw(self, grid):
+        h, w = grid.shape
+        img = np.zeros((h * self.cell_size, w * self.cell_size, 3), dtype=np.uint8)
+
+        # 填充颜色
+        for y in range(h):
+            for x in range(w):
+                color_idx = grid[y, x]
+                color = self.colors[color_idx % len(self.colors)]
+                cv2.rectangle(
+                    img,
+                    (x * self.cell_size, y * self.cell_size),
+                    ((x + 1) * self.cell_size - 1, (y + 1) * self.cell_size - 1),
+                    color,
+                    -1
+                )
+
+        # 画网格线
+        for i in range(h + 1):
+            cv2.line(img, (0, i * self.cell_size), (w * self.cell_size, i * self.cell_size), (128, 128, 128), 1)
+        for j in range(w + 1):
+            cv2.line(img, (j * self.cell_size, 0), (j * self.cell_size, h * self.cell_size), (128, 128, 128), 1)
+
+        cv2.imshow("Grid", img)
+        cv2.waitKey(1)  # 1毫秒刷新窗口
+
+
+def grid_obstacle(grid_info, obstacles):
+    """
+    grid_info: [array, ground_width, ground_height]
+    obstacles: list of (name, category, w, h, x, y)
+        x,y,w,h: 实际物理坐标
+        category: int
+    """
+    array, ground_width, ground_height = grid_info
+    arr = array.copy()
+    H, W = arr.shape  # 网格大小
+
+    for item in obstacles:
+        name, category, w, h, x, y = item
+        category = int(category)
+
+        # 映射到网格坐标（浮点数）
+        gx = x / ground_width * W
+        gy = y / ground_height * H
+        gw = w / ground_width * W
+        gh = h / ground_height * H
+
+        # 确定覆盖范围的整数索引，并裁剪到网格边界
+        left = max(0, int(np.floor(gx - gw / 2)))
+        right = min(W, int(np.ceil(gx + gw / 2)))
+        top = max(0, int(np.floor(gy - gh / 2)))
+        bottom = min(H, int(np.ceil(gy + gh / 2)))
+
+        if category == 4129:  # door
+            category = 0
+        # 只要有交集就绘制
+        if left < right and top < bottom:
+            arr[top:bottom, left:right] = category
+            # print(f"{name}: cat={category}, grid_rect=({left}:{right}, {top}:{bottom})")
+        else:
+            # 即使部分在外面，如果全部都在外部，仍然可以提示
+            # print(f"⚠️ {name} 完全在网格外，跳过。")
+            pass
+
+    return [arr, ground_width, ground_height]
+
+
+def _find_path_astar(arr, start, goal):
+    """A* 算法（返回 [(x,y), ...]）-- 使用曼哈顿启发"""
+    start_x, start_y = start
+    goal_x, goal_y = goal
+
+    if arr[start_y, start_x] not in (0, 5) or arr[goal_y, goal_x] not in (0, 7):
+        return None
+
+    def heuristic(pos):
+        return abs(pos[0] - goal_x) + abs(pos[1] - goal_y)
+
+    open_set = [(heuristic(start), 0, start, [start])]
+    visited = set()
+
+    while open_set:
+        open_set.sort(key=lambda x: x[0] + x[1])
+        _, g_cost, current, path = open_set.pop(0)
+
+        if current in visited:
+            continue
+        visited.add(current)
+
+        if current == (goal_x, goal_y):
+            return path
+
+        x, y = current
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if (0 <= nx < arr.shape[1] and 0 <= ny < arr.shape[0] and
+                    (nx, ny) not in visited and
+                    arr[ny, nx] in (0, 5, 6, 7)):
+                new_path = path + [(nx, ny)]
+                new_g_cost = g_cost + 1
+                new_f_cost = new_g_cost + heuristic((nx, ny))
+                open_set.append((new_f_cost, new_g_cost, (nx, ny), new_path))
+    return None
+
+
+def grid_point(original_arr):
+    """
+    将 original_arr 中标记为6的路径上的90°折点标记为10。
+    """
+    arr = original_arr.copy()
+    H, W = arr.shape
+
+    # 找到所有路径点
+    path_coords = np.argwhere(arr == 6)
+    if len(path_coords) < 3:
+        return arr
+
+    # 构建一个字典方便查找
+    path_set = set((y, x) for y, x in path_coords)
+
+    # 找到起点：路径点只有一个邻居
+    def get_neighbors(y, x):
+        for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            ny, nx = y + dy, x + dx
+            if (ny, nx) in path_set:
+                yield (ny, nx)
+
+    # 找起点
+    start = None
+    for y, x in path_coords:
+        if sum(1 for _ in get_neighbors(y, x)) == 1:
+            start = (y, x)
+            break
+    if start is None:
+        start = tuple(path_coords[0])
+
+    # 按路径顺序遍历
+    visited = set()
+    ordered_path = [start]
+    visited.add(start)
+    current = start
+
+    while True:
+        neighbors = [n for n in get_neighbors(*current) if n not in visited]
+        if not neighbors:
+            break
+        next_point = neighbors[0]
+        ordered_path.append(next_point)
+        visited.add(next_point)
+        current = next_point
+
+    # 标记90°折点
+    for i in range(1, len(ordered_path) - 1):
+        y0, x0 = ordered_path[i - 1]
+        y1, x1 = ordered_path[i]
+        y2, x2 = ordered_path[i + 1]
+
+        dx1, dy1 = x1 - x0, y1 - y0
+        dx2, dy2 = x2 - x1, y2 - y1
+
+        if (dx1 == 0 and dy2 == 0) or (dy1 == 0 and dx2 == 0):
+            arr[y1, x1] = 10
+
+    return arr
+
+def grid_path(array):
+    """
+    两步策略寻路：
+    1. 先将可摧毁障碍物(3)设为0，找到完整路径并标记为6
+    2. 将路径上原来的3标记为8（需要摧毁的障碍物）
+
+    Args:
+        array: 2D numpy array
+
+    Returns:
+        更新后的数组
+    """
+    try:
+        arr = np.array(array, copy=True)
+        H, W = arr.shape
+
+        # 找角色和目标位置
+        role_positions = np.argwhere(arr == 5)
+        if len(role_positions) == 0:
+            print("警告: 未找到角色位置 (值为5)")
+            return arr
+
+        if len(role_positions) > 1:
+            role_y = int(np.mean([pos[0] for pos in role_positions]))
+            role_x = int(np.mean([pos[1] for pos in role_positions]))
+        else:
+            role_y, role_x = role_positions[0]
+
+        target_positions = np.argwhere(arr == 7)
+        if len(target_positions) == 0:
+            print("警告: 未找到目的地 (值为7)")
+            return arr
+        target_y, target_x = target_positions[0]
+
+        # 临时移除可摧毁障碍物
+        temp_arr = np.array(arr, copy=True)
+        temp_arr[temp_arr == 3] = 0
+
+        # 使用A*寻找路径（假设已有 _find_path_astar 函数）
+        path = _find_path_astar(temp_arr, (role_x, role_y), (target_x, target_y))
+        if not path:
+            print("即使移除可摧毁障碍物也无法找到路径")
+            return arr
+
+        # 标记路径
+        for x, y in path[1:-1]:  # 跳过起点和终点
+            arr[y, x] = 6  # 普通路径标为6
+
+        # 标记折点
+        arr = grid_point(arr)
+
+        # 标记路径上原来的障碍物为8
+        for x, y in path[1:-1]:
+            if array[y, x] == 3:
+                arr[y, x] = 8
+
+        return arr
+
+    except Exception as e:
+        print(f"错误: {e}")
+        return array
+
+
+def grid_destroy(array):
+    """
+    检查数组中是否有标记为8的障碍物，
+    如果有，将离角色最近的一个标记为9。
+
+    Args:
+        array: 2D numpy array
+
+    Returns:
+        更新后的数组
+    """
+    arr = np.array(array, copy=True)
+
+    # 找角色位置
+    role_positions = np.argwhere(arr == 5)
+    if len(role_positions) == 0:
+        print("未找到角色位置 (5)")
+        return arr
+
+    # 取角色中心位置
+    role_y = int(np.mean([pos[0] for pos in role_positions]))
+    role_x = int(np.mean([pos[1] for pos in role_positions]))
+
+    # 找所有需要摧毁的障碍物位置 (8)
+    destroy_positions = np.argwhere(arr == 8)
+    if len(destroy_positions) == 0:
+        # 没有8，直接返回
+        return arr
+
+    # 计算每个障碍物到角色的曼哈顿距离
+    distances = [abs(y - role_y) + abs(x - role_x) for y, x in destroy_positions]
+    nearest_index = np.argmin(distances)
+    nearest_y, nearest_x = destroy_positions[nearest_index]
+
+    # 标记最近的障碍物为9
+    arr[nearest_y, nearest_x] = 9
+
+    return arr
+
+
+def grid_line(array, start, end):
+    """
+    判断连线是否可通（中间格子是否全部为0或6），然后标记整条线为 mark。
+
+    Args:
+        array: 2D numpy array
+        start: (x, y) 起点
+        end: (x, y) 终点
+        mark: 要标记的值（默认11）
+
+    Returns:
+        tuple: (更新后的数组, 中间格子是否可通)
+    """
+    x0, y0 = start
+    x1, y1 = end
+    H, W = array.shape
+
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx - dy
+
+    x, y = x0, y0
+    points = []
+
+    while True:
+        points.append((x, y))  # 保持逻辑坐标 (x, y)
+        if x == x1 and y == y1:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x += sx
+        if e2 < dx:
+            err += dx
+            y += sy
+
+    # 判断中间格子是否可通（排除首尾）
+    clear = True
+    for px, py in points[1:-1]:
+        if not (0 <= py < H and 0 <= px < W) or (array[py, px] != 0 and array[py, px] != 6):
+            clear = False
+            break
+
+    # 标记中间格子
+    # for px, py in points[1:-1]:
+    #     if 0 <= py < H and 0 <= px < W:
+    #         array[py, px] = 11
+
+    return array, clear
+
+
+def nearest_reachable_point(array):
+    """
+    找到角色到目的地的直线可达点，并标记为2。
+
+    返回：
+        tuple: (更新后的数组, 可达点坐标 (x, y), 类型 str)
+            类型:
+                9 -> 'obstacle'
+                10 -> 'point'
+                7 -> 'target'
+    """
+    array = array.copy()
+
+    # 找角色和目的地
+    ry, rx = np.argwhere(array == 5)[0]  # NumPy 返回 (y, x)
+    role_pos = (rx, ry)  # 转为 (x, y)
+
+    ty, tx = np.argwhere(array == 7)[0]
+    target_pos = (tx, ty)
+
+    # 先判断角色到目的地是否直线可达
+    array, clear = grid_line(array, role_pos, target_pos)
+    if clear:
+        tx, ty = target_pos
+        array[ty, tx] = 2
+        return array, target_pos, 'target'
+
+    # 找路径中的障碍和折点
+    points_yx = np.argwhere((array == 9) | (array == 10))
+    points = [(x, y) for y, x in points_yx]  # 转为 (x, y)
+
+    # 按离角色距离从远到近排序
+    points.sort(key=lambda p: -(abs(p[0] - role_pos[0]) + abs(p[1] - role_pos[1])))
+
+    # 挨个判断直线是否可达
+    for px, py in points:
+        array, clear = grid_line(array, role_pos, (px, py))
+        if clear:
+            orig_value = array[py, px]  # 先保存原值
+            array[py, px] = 2  # 再标记
+            # 根据原值返回类型
+            if orig_value == 9:
+                type_str = 'obstacle'
+            elif orig_value == 10:
+                type_str = 'point'
+            else:
+                type_str = 'unknown'
+            return array, (px, py), type_str
+
+    print("None line to")
+    return array, None, None
+
+
+
+anim = GridAnimatorCV()
